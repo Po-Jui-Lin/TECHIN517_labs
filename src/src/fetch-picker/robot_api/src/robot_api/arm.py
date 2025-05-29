@@ -2,6 +2,7 @@ import rospy
 import actionlib
 import control_msgs.msg
 import trajectory_msgs.msg  
+from robot_controllers_msgs.msg import QueryControllerStatesAction, QueryControllerStatesGoal, ControllerState
 
 from .arm_joints import ArmJoints
 
@@ -37,6 +38,13 @@ class Arm(object):
         # Wait for move group server
         self._move_group_client.wait_for_server()
         self._compute_ik = rospy.ServiceProxy('compute_ik', GetPositionIK)
+        
+        # Add controller state management client
+        self._controller_client = actionlib.SimpleActionClient(
+            'query_controller_states',
+            QueryControllerStatesAction
+        )
+        self._controller_client.wait_for_server()
 
     def move_to_joints(self, arm_joints):
         """Moves the robot's arm to the given joints.
@@ -115,6 +123,28 @@ class Arm(object):
         """Cancels all goals for both the joint trajectory and move group actions."""
         self._client.cancel_all_goals()  # existing action client from Lab 7
         self._move_group_client.cancel_all_goals()  # The MoveGroup client
+    
+    def relax(self):
+        """Relaxes the arm for kinesthetic teaching."""
+        goal = QueryControllerStatesGoal()
+        state = ControllerState()
+        state.name = 'arm_controller/follow_joint_trajectory'
+        state.state = ControllerState.STOPPED
+        goal.updates.append(state)
+        self._controller_client.send_goal(goal)
+        self._controller_client.wait_for_result()
+        rospy.loginfo("Arm relaxed for kinesthetic teaching")
+    
+    def freeze(self):
+        """Freezes the arm (enables controller for MoveIt)."""
+        goal = QueryControllerStatesGoal()
+        state = ControllerState()
+        state.name = 'arm_controller/follow_joint_trajectory'
+        state.state = ControllerState.RUNNING
+        goal.updates.append(state)
+        self._controller_client.send_goal(goal)
+        self._controller_client.wait_for_result()
+        rospy.loginfo("Arm controller enabled")
     
     def moveit_error_string(self, val):
         """Returns a string associated with a MoveItErrorCode.
